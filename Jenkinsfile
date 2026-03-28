@@ -24,7 +24,7 @@ pipeline {
         // ─────────────────────────────────────────
         stage('Checkout') {
             steps {
-                git branch: 'master',
+                git branch: 'main',
                     url: "${GITHUB_REPO}",
                     credentialsId: 'github-token'
 
