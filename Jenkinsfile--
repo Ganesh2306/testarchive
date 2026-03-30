@@ -11,6 +11,9 @@ pipeline {
 
     stages {
 
+        // ─────────────────────────────────────────
+        // STAGE 1 : GitHub वरून code checkout
+        // ─────────────────────────────────────────
         stage('Checkout') {
             steps {
                 git branch: 'main',
@@ -29,19 +32,30 @@ pipeline {
             }
         }
 
+        // ─────────────────────────────────────────
+        // STAGE 2 : Environment verify करा
+        //   FIX: extra " काढला, npm global install
+        // ─────────────────────────────────────────
         stage('Setup Environment') {
             steps {
                 sh '''
                     echo "=== Node Version ==="
                     node -v
+
                     echo "=== NPM Version ==="
                     npm -v
+
                     echo "=== Dotnet Version ==="
                     dotnet --version
                 '''
             }
         }
 
+        // ─────────────────────────────────────────
+        // STAGE 3 : Frontend Build (ClientApp)
+        //   FIX: nvm use बदलून node path direct वापरतो
+        //        Jenkins वर node 18 आधीच आहे
+        // ─────────────────────────────────────────
         stage('Frontend Build') {
             steps {
                 sh '''
@@ -52,24 +66,37 @@ pipeline {
             }
         }
 
+        // ─────────────────────────────────────────
+        // STAGE 4 : .NET Restore
+        // ─────────────────────────────────────────
         stage('Restore') {
             steps {
                 sh 'dotnet restore'
             }
         }
 
+        // ─────────────────────────────────────────
+        // STAGE 5 : Build — Release mode
+        // ─────────────────────────────────────────
         stage('Build') {
             steps {
                 sh 'dotnet build --configuration Release --no-restore'
             }
         }
 
+        // ─────────────────────────────────────────
+        // STAGE 6 : Unit Tests
+        // ─────────────────────────────────────────
         stage('Test') {
             steps {
                 sh 'dotnet test --no-build --configuration Release'
             }
         }
 
+        // ─────────────────────────────────────────
+        // STAGE 7 : Publish → Versioned ZIP
+        //   e.g. viewerapp-1.0.5-abc1f3d.zip
+        // ─────────────────────────────────────────
         stage('Publish & Package') {
             steps {
                 sh 'dotnet publish ARCHIVE_VIEWER.csproj --configuration Release --no-build --output ./publish'
@@ -83,6 +110,10 @@ pipeline {
             }
         }
 
+        // ─────────────────────────────────────────
+        // STAGE 8 : GitHub वर Git Tag push
+        //   GitHub → Tags मध्ये version history दिसेल
+        // ─────────────────────────────────────────
         stage('Tag Version on GitHub') {
             steps {
                 withCredentials([usernamePassword(
@@ -93,16 +124,28 @@ pipeline {
                     sh """
                         git config user.email "jenkins@viewerapp.ci"
                         git config user.name  "Jenkins CI"
+
                         git tag -a "${env.FULL_VERSION}" \
                                 -m "Release ${env.FULL_VERSION} | Build #${BUILD_NUMBER}"
-                        git push https://\${GIT_USER}:\${GIT_TOKEN}@github.com/Ganesh2306/testarchive.git \
+
+                        git push https://${GIT_USER}:${GIT_TOKEN}@github.com/Ganesh2306/testarchive.git \
                                  "${env.FULL_VERSION}"
+
                         echo "[OK] Tag ${env.FULL_VERSION} pushed to GitHub"
                     """
                 }
             }
         }
 
+        // ─────────────────────────────────────────
+        // STAGE 9 : App Server वर Deploy
+        //   A) viewerapp.service STOP
+        //   B) ZIP → SCP to /tmp/
+        //   C) Backup जुन्या files
+        //   D) Unzip नव्या files
+        //   E) www-data permissions fix
+        //   F) viewerapp.service START
+        // ─────────────────────────────────────────
         stage('Deploy to EC2') {
             steps {
                 sshagent(credentials: ['app-server-ssh-key']) {
@@ -122,18 +165,15 @@ pipeline {
                     """
 
                     // C) Backup + D) Unzip + E) Permissions
-                    // FIX: -not -name "archive" added to prevent self-copy error
                     sh """
                         ssh -o StrictHostKeyChecking=no ${APP_SERVER} '
                             set -e
 
                             BACKUP_DIR="${APP_DIR}/backups/${env.FULL_VERSION}"
                             sudo mkdir -p "\$BACKUP_DIR"
-
                             sudo find ${APP_DIR} -maxdepth 1 \
                                    -not -name "backups" \
                                    -not -name "CURRENT_VERSION" \
-                                   -not -name "archive" \
                                    -not -name "." \
                                    -exec cp -r {} "\$BACKUP_DIR/" \\;
                             echo "[OK] Backup: \$BACKUP_DIR"
@@ -145,7 +185,7 @@ pipeline {
                             sudo chmod -R 755 ${APP_DIR}
 
                             echo "${env.FULL_VERSION}" | sudo tee ${APP_DIR}/CURRENT_VERSION
-                            echo "[OK] Deployed ${env.FULL_VERSION} to ${APP_DIR}"
+                            echo "[OK] Deployed ${env.FULL_VERSION}"
                         '
                     """
 
@@ -158,6 +198,9 @@ pipeline {
             }
         }
 
+        // ─────────────────────────────────────────
+        // STAGE 10 : Health Check
+        // ─────────────────────────────────────────
         stage('Health Check') {
             steps {
                 sshagent(credentials: ['app-server-ssh-key']) {
@@ -177,7 +220,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Deploy SUCCESS — Version: ${env.FULL_VERSION} — viewerapp.service RUNNING"
+            echo "✅ Deploy SUCCESS — Version: ${env.FULL_VERSION} — Service: viewerapp.service RUNNING"
         }
         failure {
             sshagent(credentials: ['app-server-ssh-key']) {
