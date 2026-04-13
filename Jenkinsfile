@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     environment {
-        APP_SERVER = 'ubuntu@52.66.166.243'
+        APP_SERVER = 'ubuntu@3.111.40.73'
         APP_DIR    = '/var/www/html/textronics/dam/tdst/archive'
-        SERVICE    = 'viewerapp.service'
+        SERVICE    = 'adminapp.service'
         DLL_NAME   = 'ARCHIVE_VIEWER.dll'
         VERSION    = "1.0.${BUILD_NUMBER}"
     }
@@ -15,7 +15,7 @@ pipeline {
             steps {
                 git branch: 'main',
                     url: 'https://github.com/Ganesh2306/testarchive.git',
-                    credentialsId: 'github-token'
+                    credentialsId: 'github-token-1'
 
                 script {
                     env.GIT_COMMIT_SHORT = sh(
@@ -86,7 +86,7 @@ pipeline {
         stage('Tag Version on GitHub') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'github-token',
+                    credentialsId: 'github-token-1',
                     usernameVariable: 'GIT_USER',
                     passwordVariable: 'GIT_TOKEN'
                 )]) {
@@ -177,7 +177,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Deploy SUCCESS — Version: ${env.FULL_VERSION} — viewerapp.service RUNNING"
+            echo "✅ Deploy SUCCESS — Version: ${env.FULL_VERSION} — adminapp.service RUNNING"
         }
         failure {
             sshagent(credentials: ['app-server-ssh-key']) {
