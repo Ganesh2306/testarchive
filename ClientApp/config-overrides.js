@@ -1,67 +1,52 @@
-﻿const SassRuleRewire = require("react-app-rewire-sass-rule");
-const path = require("path");
-const rewireAliases = require("react-app-rewire-aliases");
-const TerserPlugin = require("terser-webpack-plugin");
+const path = require('path')
+const rewireAliases = require('react-app-rewire-aliases')
 
-module.exports = function override(config, env) {
-    // Enable PostCSS with RTL support
-    require("react-app-rewire-postcss")(config, {
-        plugins: (loader) => [require("postcss-rtl")()],
-    });
-
-    // Webpack Aliases
-    config = rewireAliases.aliasesOptions({
-        "@src": path.resolve(__dirname, "src"),
-        "@assets": path.resolve(__dirname, "src/@core/assets"),
-        "@components": path.resolve(__dirname, "src/@core/components"),
-        "@layouts": path.resolve(__dirname, "src/@core/layouts"),
-        "@store": path.resolve(__dirname, "src/redux"),
-        "@styles": path.resolve(__dirname, "src/@core/scss"),
-        "@configs": path.resolve(__dirname, "src/configs"),
-        "@utils": path.resolve(__dirname, "src/utility/Utils"),
-        "@hooks": path.resolve(__dirname, "src/utility/hooks"),
-    })(config, env);
-
-    // Optimize Sass Compilation
-    config = new SassRuleRewire()
-        .withRuleOptions({
-            test: /\.s[ac]ss$/i,
-            use: [
-                {
-                    loader: "sass-loader",
-                    options: {
-                        sassOptions: {
-                            includePaths: ["node_modules", "src/assets"],
-                        },
-                    },
-                },
-            ],
-        })
-        .rewire(config, env);
-
-    // 🚀 Production Optimizations
-    if (env === "production") {
-        config.optimization = {
-            splitChunks: {
-                chunks: "all",
-            },
-            minimize: true,
-            minimizer: [
-                new TerserPlugin({
-                    terserOptions: {
-                        compress: {
-                            drop_debugger: true,
-                            pure_funcs: ["console.log", "console.debug"], // Removes only log & debug
-                        },
-                        format: {
-                            comments: false, // Remove comments
-                        },
-                    },
-                })
-
-            ],
-        };
+function updateSassLoaderOptions(rules, sassIncludePaths) {
+  rules.forEach(rule => {
+    if (rule.oneOf) {
+      updateSassLoaderOptions(rule.oneOf, sassIncludePaths)
     }
 
-    return config;
-};
+    if (!Array.isArray(rule.use)) {
+      return
+    }
+
+    rule.use.forEach(loader => {
+      if (!loader || typeof loader !== 'object' || !loader.loader || !loader.loader.includes('sass-loader')) {
+        return
+      }
+
+      loader.options = {
+        ...(loader.options || {}),
+        sassOptions: {
+          ...((loader.options && loader.options.sassOptions) || {}),
+          includePaths: sassIncludePaths
+        }
+      }
+    })
+  })
+}
+
+module.exports = function override(config, env) {
+  const sassIncludePaths = ['node_modules', path.resolve(__dirname, 'src/assets')]
+
+  require('react-app-rewire-postcss')(config, {
+    plugins: loader => [require('postcss-rtl')()]
+  })
+
+  config = rewireAliases.aliasesOptions({
+    '@src': path.resolve(__dirname, 'src'),
+    '@assets': path.resolve(__dirname, 'src/@core/assets'),
+    '@components': path.resolve(__dirname, 'src/@core/components'),
+    '@layouts': path.resolve(__dirname, 'src/@core/layouts'),
+    '@store': path.resolve(__dirname, 'src/redux'),
+    '@styles': path.resolve(__dirname, 'src/@core/scss'),
+    '@configs': path.resolve(__dirname, 'src/configs'),
+    '@utils': path.resolve(__dirname, 'src/utility/Utils'),
+    '@hooks': path.resolve(__dirname, 'src/utility/hooks')
+  })(config, env)
+
+  updateSassLoaderOptions(config.module.rules, sassIncludePaths)
+
+  return config
+}
