@@ -42,17 +42,11 @@ pipeline {
             }
         }
 
-        // ─────────────────────────────────────────
-        // Frontend Build
-        // --legacy-peer-deps: @fullcalendar/react@5.3.0
-        // react@16 expect करतो पण react@17 आहे
-        // legacy mode मध्ये conflict ignore होतो
-        // ─────────────────────────────────────────
         stage('Frontend Build') {
             steps {
                 sh '''
                     cd ClientApp
-                    npm install --legacy-peer-deps
+                    npm install
                     npm run build
                 '''
             }
@@ -128,6 +122,7 @@ pipeline {
                     """
 
                     // C) Backup + D) Unzip + E) Permissions
+                    // FIX: -not -name "archive" added to prevent self-copy error
                     sh """
                         ssh -o StrictHostKeyChecking=no ${APP_SERVER} '
                             set -e
